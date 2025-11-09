@@ -379,10 +379,14 @@
                         </div>
                         <div class="form-group">
                             <label>Order Type *</label>
-                            <select id="orderType" required>
-                                <option value="delivery">Delivery</option>
+                            <select id="orderType" required onchange="toggleDeliveryCharge()">
                                 <option value="pickup">Pickup</option>
+                                <option value="delivery">Delivery</option>
                             </select>
+                        </div>
+                        <div class="form-group" id="deliveryChargeGroup" style="display: none;">
+                            <label>Delivery Charge (₹)</label>
+                            <input type="number" id="deliveryCharge" value="0" min="0" onchange="calculateOrderTotal()">
                         </div>
                     </div>
 
@@ -426,7 +430,7 @@
                     <div class="order-summary">
                         <h3>Order Summary</h3>
                         <p><strong>Subtotal:</strong> ₹<span id="subtotal">0</span></p>
-                        <p><strong>Tax (5%):</strong> ₹<span id="tax">0</span></p>
+                        <p id="deliveryChargeDisplay" style="display: none;"><strong>Delivery Charge:</strong> ₹<span id="deliveryChargeAmount">0</span></p>
                         <p style="font-size: 20px; color: #667eea;"><strong>Total:</strong> ₹<span id="total">0</span></p>
                     </div>
 
@@ -808,6 +812,22 @@
             calculateOrderTotal();
         }
 
+        function toggleDeliveryCharge() {
+            const orderType = document.getElementById('orderType').value;
+            const deliveryGroup = document.getElementById('deliveryChargeGroup');
+            const deliveryDisplay = document.getElementById('deliveryChargeDisplay');
+            
+            if (orderType === 'delivery') {
+                deliveryGroup.style.display = 'block';
+                deliveryDisplay.style.display = 'block';
+            } else {
+                deliveryGroup.style.display = 'none';
+                deliveryDisplay.style.display = 'none';
+                document.getElementById('deliveryCharge').value = 0;
+            }
+            calculateOrderTotal();
+        }
+
         function calculateItemTotal(input) {
             const row = input.closest('.item-row');
             const qty = parseFloat(row.querySelector('.item-qty').value) || 0;
@@ -822,11 +842,11 @@
                 subtotal += parseFloat(input.value) || 0;
             });
             
-            const tax = subtotal * 0.05;
-            const total = subtotal + tax;
+            const deliveryCharge = parseFloat(document.getElementById('deliveryCharge').value) || 0;
+            const total = subtotal + deliveryCharge;
             
             document.getElementById('subtotal').textContent = subtotal.toFixed(2);
-            document.getElementById('tax').textContent = tax.toFixed(2);
+            document.getElementById('deliveryChargeAmount').textContent = deliveryCharge.toFixed(2);
             document.getElementById('total').textContent = total.toFixed(2);
         }
 
@@ -857,7 +877,7 @@
             
             const orderId = 'ORD' + Date.now();
             const subtotal = parseFloat(document.getElementById('subtotal').textContent);
-            const tax = parseFloat(document.getElementById('tax').textContent);
+            const deliveryCharge = parseFloat(document.getElementById('deliveryCharge').value) || 0;
             const total = parseFloat(document.getElementById('total').textContent);
             
             const order = {
@@ -871,7 +891,7 @@
                 notes: document.getElementById('orderNotes').value,
                 utensils: document.getElementById('utensilsProvided').value,
                 subtotal: subtotal,
-                tax: tax,
+                deliveryCharge: deliveryCharge,
                 total: total,
                 paid: 0,
                 due: total,
@@ -890,7 +910,7 @@
             
             showNotification('Order created successfully!');
             generateInvoice(order);
-            resetForm();
+            // DON'T reset form here - let user decide when to reset
         });
 
         function updateCustomerData(order) {
@@ -975,7 +995,7 @@
                 
                 <div style="margin-top: 30px; text-align: right;">
                     <p><strong>Subtotal:</strong> ₹${order.subtotal.toFixed(2)}</p>
-                    <p><strong>Tax (5%):</strong> ₹${order.tax.toFixed(2)}</p>
+                    ${order.deliveryCharge > 0 ? `<p><strong>Delivery Charge:</strong> ₹${order.deliveryCharge.toFixed(2)}</p>` : ''}
                     <h3 style="color: #667eea; margin-top: 10px;">Total: ₹${order.total.toFixed(2)}</h3>
                 </div>
                 
@@ -997,6 +1017,9 @@
             const now = new Date();
             document.getElementById('orderDate').valueAsDate = now;
             document.getElementById('orderTime').value = now.toTimeString().slice(0,5);
+            document.getElementById('deliveryCharge').value = 0;
+            document.getElementById('deliveryChargeGroup').style.display = 'none';
+            document.getElementById('deliveryChargeDisplay').style.display = 'none';
             
             const itemList = document.getElementById('itemList');
             itemList.innerHTML = `
