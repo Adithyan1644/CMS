@@ -716,7 +716,8 @@
             <div class="action-buttons">
                 <button class="btn btn-primary" onclick="printInvoice()">🖨️ Print</button>
                 <button class="btn btn-success" onclick="downloadPDF()">📄 Download PDF</button>
-                <button class="btn btn-secondary" onclick="closeModal('invoiceModal')">Close</button>
+                <button class="btn btn-secondary" onclick="closeModal('invoiceModal')">Edit Order</button>
+                <button class="btn btn-danger" onclick="closeModalAndReset()">Close & New Order</button>
             </div>
         </div>
     </div>
@@ -773,7 +774,7 @@
             document.getElementById(tabName).classList.add('active');
             event.target.classList.add('active');
             
-            // Refresh data when switching tabs
+            // Refresh data when switching tabs - always reload customers from orders
             if (tabName === 'inventory') loadInventory();
             if (tabName === 'rawmaterials') loadRawMaterials();
             if (tabName === 'utensils') loadUtensils();
@@ -919,6 +920,7 @@
                 customer.totalOrders++;
                 customer.totalSpent += order.total;
                 customer.lastOrder = order.date;
+                if (!customer.orders) customer.orders = [];
                 customer.orders.push(order.id);
             } else {
                 customers.push({
@@ -931,6 +933,7 @@
                 });
             }
             localStorage.setItem('customers', JSON.stringify(customers));
+            loadCustomers(); // Refresh customer list immediately
         }
 
         function deductRawMaterials(items) {
@@ -955,7 +958,7 @@
                     <div>
                         <h2 style="color: #667eea;">RAJANI FOOD'S</h2>
                         <p>Premium Food Service</p>
-                        <p>Phone: +91 8758762922</p>
+                        <p>Phone: +91 98765 43210</p>
                     </div>
                     <div style="text-align: right;">
                         <h3>INVOICE</h3>
@@ -1281,7 +1284,40 @@
 
         // Customers
         function loadCustomers() {
+            // Rebuild customers from orders to ensure accuracy
+            customers = [];
+            orders.forEach(order => {
+                let customer = customers.find(c => c.phone === order.phone);
+                if (customer) {
+                    customer.totalOrders++;
+                    customer.totalSpent += order.total;
+                    // Update last order if this order is more recent
+                    if (new Date(order.date) > new Date(customer.lastOrder)) {
+                        customer.lastOrder = order.date;
+                    }
+                    customer.orders.push(order.id);
+                } else {
+                    customers.push({
+                        name: order.customerName,
+                        phone: order.phone,
+                        totalOrders: 1,
+                        totalSpent: order.total,
+                        lastOrder: order.date,
+                        orders: [order.id]
+                    });
+                }
+            });
+            
+            // Save updated customers
+            localStorage.setItem('customers', JSON.stringify(customers));
+            
+            // Display customers
             const tbody = document.getElementById('customersBody');
+            if (customers.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 40px; color: #999;">No customers yet. Create an order to add customers.</td></tr>';
+                return;
+            }
+            
             tbody.innerHTML = customers.map(customer => `
                 <tr>
                     <td>${customer.name}</td>
@@ -1301,19 +1337,56 @@
             const customer = customers.find(c => c.phone === phone);
             const customerOrders = orders.filter(o => o.phone === phone);
             
-            let html = `<h3>${customer.name}'s Orders</h3>`;
-            customerOrders.forEach(order => {
-                html += `
-                    <div class="card">
-                        <p><strong>Order ID:</strong> ${order.id}</p>
-                        <p><strong>Date:</strong> ${order.date} ${order.time}</p>
-                        <p><strong>Total:</strong> ₹${order.total.toFixed(2)}</p>
-                        <p><strong>Items:</strong> ${order.items.map(i => i.name).join(', ')}</p>
+            if (customerOrders.length === 0) {
+                alert('No orders found for this customer.');
+                return;
+            }
+            
+            let modalContent = `
+                <h2 style="color: #667eea; margin-bottom: 20px;">${customer.name}'s Order History</h2>
+                <p style="margin-bottom: 20px;"><strong>Phone:</strong> ${customer.phone} | <strong>Total Orders:</strong> ${customer.totalOrders} | <strong>Total Spent:</strong> ₹${customer.totalSpent.toFixed(2)}</p>
+            `;
+            
+            customerOrders.forEach((order, index) => {
+                const paymentStatus = order.due === 0 ? '<span class="badge badge-success">Paid</span>' : 
+                                     order.paid > 0 ? '<span class="badge badge-warning">Partial</span>' : 
+                                     '<span class="badge badge-danger">Unpaid</span>';
+                
+                modalContent += `
+                    <div class="card" style="margin-bottom: 15px;">
+                        <h4 style="color: #667eea;">Order #${index + 1} - ${order.id}</h4>
+                        <p><strong>Date:</strong> ${order.date} at ${order.time} | <strong>Type:</strong> ${order.type.toUpperCase()}</p>
+                        <p><strong>Items:</strong></p>
+                        <ul style="margin: 10px 0;">
+                            ${order.items.map(item => `<li>${item.name} - Qty: ${item.qty} - ₹${item.total.toFixed(2)}</li>`).join('')}
+                        </ul>
+                        <p><strong>Subtotal:</strong> ₹${order.subtotal.toFixed(2)}</p>
+                        ${order.deliveryCharge > 0 ? `<p><strong>Delivery Charge:</strong> ₹${order.deliveryCharge.toFixed(2)}</p>` : ''}
+                        <p><strong>Total:</strong> ₹${order.total.toFixed(2)} | <strong>Paid:</strong> ₹${order.paid.toFixed(2)} | <strong>Due:</strong> ₹${order.due.toFixed(2)} ${paymentStatus}</p>
+                        ${order.notes ? `<p><strong>Notes:</strong> ${order.notes}</p>` : ''}
                     </div>
                 `;
             });
             
-            alert(html);
+            // Create a temporary modal for customer orders
+            const tempModal = document.createElement('div');
+            tempModal.className = 'modal show';
+            tempModal.innerHTML = `
+                <div class="modal-content" style="max-width: 800px;">
+                    ${modalContent}
+                    <div class="action-buttons" style="margin-top: 20px;">
+                        <button class="btn btn-secondary" onclick="this.closest('.modal').remove()">Close</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(tempModal);
+            
+            // Close on outside click
+            tempModal.onclick = function(e) {
+                if (e.target === tempModal) {
+                    tempModal.remove();
+                }
+            };
         }
 
         function repeatOrder(phone) {
@@ -1395,6 +1468,11 @@
 
         function closeModal(modalId) {
             document.getElementById(modalId).classList.remove('show');
+        }
+
+        function closeModalAndReset() {
+            closeModal('invoiceModal');
+            resetForm();
         }
 
         function printInvoice() {
